@@ -1,5 +1,9 @@
 # UOCIS322 - Project 1 #
+Evan Doster
 
+contact: edoster@uoregon.edu
+
+Description:
 This project will get you started with creating a simple webpage server.
 
 ## Getting started

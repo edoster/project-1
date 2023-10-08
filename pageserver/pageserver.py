@@ -23,6 +23,8 @@ log = logging.getLogger(__name__)
 import socket    # Basic TCP/IP communication on the internet
 import _thread   # Response computation runs concurrently with main program
 
+import os        # Used to configure docroot file path
+
 
 def listen(portnum):
     """
@@ -42,7 +44,7 @@ def listen(portnum):
     return serversocket
 
 
-def serve(sock, func):
+def serve(sock, func, docroot):
     """
     Respond to connections on sock.
     Args:
@@ -56,7 +58,7 @@ def serve(sock, func):
     while True:
         log.info("Attempting to accept a connection on {}".format(sock))
         (clientsocket, address) = sock.accept()
-        _thread.start_new_thread(func, (clientsocket,))
+        _thread.start_new_thread(func, (clientsocket, docroot))
 
 
 ##
@@ -78,7 +80,7 @@ STATUS_NOT_FOUND = "HTTP/1.0 404 Not Found\n\n"
 STATUS_NOT_IMPLEMENTED = "HTTP/1.0 401 Not Implemented\n\n"
 
 
-def respond(sock):
+def respond(sock, docroot):
     """
     This server responds only to GET requests (not PUT, POST, or UPDATE).
     Any valid GET request is answered with an ascii graphic of a cat.
@@ -90,9 +92,34 @@ def respond(sock):
     log.info("Request was {}\n***\n".format(request))
 
     parts = request.split()
-    if len(parts) > 1 and parts[0] == "GET":
+    page = parts[1]
+
+    # Construct the full path to the requested file
+    full_path = os.path.join(docroot, page.lstrip('/'))
+
+    # NOTE: I had to double the error codes because they were not printing the 
+    # error upon output. 
+
+    # Use curl -i http://localhost: followed by the port number and test query
+    # to test for the error message on the server end.
+
+    # Check for illegal characters
+    if ("~" in page) or (".." in page):
+        transmit(STATUS_FORBIDDEN, sock)
+        transmit("403 Forbidden\n\nNuh-uh delete the illegal characters from the url!", sock) 
+
+    # Check if the file exists in the docroot directory
+    elif os.path.isfile(full_path):
+        # The file exists, serve it
         transmit(STATUS_OK, sock)
-        transmit(CAT, sock)
+        with open(full_path, 'r') as f:
+            transmit(f.read(), sock)
+
+    # If the request is not in docroot, then the page is not found
+    elif not os.path.isfile(full_path):
+        transmit(STATUS_NOT_FOUND, sock)
+        transmit("404 Not Found\n\nPage Not Found, Try Again!", sock)
+
     else:
         log.info("Unhandled request: {}".format(request))
         transmit(STATUS_NOT_IMPLEMENTED, sock)
@@ -138,12 +165,13 @@ def get_options():
 def main():
     options = get_options()
     port = options.PORT
+    docroot = options.DOCROOT
     if options.DEBUG:
         log.setLevel(logging.DEBUG)
     sock = listen(port)
     log.info("Listening on port {}".format(port))
     log.info("Socket is {}".format(sock))
-    serve(sock, respond)
+    serve(sock, respond, docroot)
 
 
 if __name__ == "__main__":
